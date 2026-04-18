@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RMMS AI Server - Test Page</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; padding: 20px; }
+h1 { color: #7c6ff7; margin-bottom: 8px; font-size: 1.6em; }
+.subtitle { color: #888; margin-bottom: 24px; font-size: 0.9em; }
+.card { background: #1a1b23; border: 1px solid #2a2b35; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+.card h2 { color: #9d8df7; font-size: 1.1em; margin-bottom: 12px; }
+.row { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+label { min-width: 80px; color: #aaa; font-size: 0.9em; }
+input[type="file"] { color: #ccc; }
+select, input[type="text"], input[type="number"] {
+  background: #252630; border: 1px solid #3a3b45; color: #e0e0e0;
+  padding: 6px 10px; border-radius: 6px; font-size: 0.9em;
+}
+button {
+  background: #7c6ff7; color: #fff; border: none; padding: 8px 20px;
+  border-radius: 8px; cursor: pointer; font-size: 0.9em; font-weight: 500;
+}
+button:hover { background: #6b5ce6; }
+button:disabled { background: #444; cursor: not-allowed; }
+#progress-area { margin-top: 12px; }
+.progress-bar { background: #252630; border-radius: 6px; height: 20px; overflow: hidden; margin-top: 6px; }
+.progress-fill { background: linear-gradient(90deg, #7c6ff7, #9d8df7); height: 100%; transition: width 0.3s; width: 0%; }
+.progress-text { font-size: 0.85em; color: #aaa; margin-top: 4px; }
+#log { background: #0d0e12; border: 1px solid #2a2b35; border-radius: 8px; padding: 12px;
+  font-family: 'Fira Code', monospace; font-size: 0.8em; max-height: 300px;
+  overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+.log-entry { margin-bottom: 2px; }
+.log-info { color: #7c6ff7; }
+.log-progress { color: #4caf50; }
+.log-error { color: #f44336; }
+.log-result { color: #ff9800; }
+#results { margin-top: 12px; }
+.result-link { color: #7c6ff7; text-decoration: none; margin-right: 12px; }
+.result-link:hover { text-decoration: underline; }
+.status-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; }
+.status-ok { background: #1b5e20; color: #4caf50; }
+.status-err { background: #b71c1c; color: #f44336; }
+.api-key-row { margin-bottom: 16px; }
+</style>
+</head>
+<body>
+
+<h1>RMMS AI Server</h1>
+<p class="subtitle">Protocol v1.0.0-alpha &mdash; Test Console</p>
+
+<div class="card">
+  <h2>Authentication</h2>
+  <div class="row api-key-row">
+    <label>API Key</label>
+    <input type="text" id="api-key" placeholder="Leave empty if auth disabled" style="width: 300px;">
+  </div>
+</div>
+
+<div class="card">
+  <h2>Submit Task</h2>
+  <div class="row">
+    <label>Audio File</label>
+    <input type="file" id="audio-file" accept="audio/*">
+  </div>
+  <div class="row">
+    <label>Preset</label>
+    <select id="preset">
+      <option value="split">split</option>
+      <option value="split+midi">split+midi</option>
+      <option value="split+detect">split+detect</option>
+      <option value="full">full</option>
+    </select>
+  </div>
+  <div class="row">
+    <label>Device</label>
+    <select id="device">
+      <option value="auto">auto</option>
+      <option value="cuda">cuda</option>
+      <option value="npu">npu</option>
+      <option value="cpu">cpu</option>
+    </select>
+  </div>
+  <div class="row">
+    <label>Stems</label>
+    <select id="stems">
+      <option value="6">6 stems</option>
+      <option value="4">4 stems</option>
+    </select>
+  </div>
+  <div class="row">
+    <button id="submit-btn" onclick="submitTask()">Submit</button>
+    <button id="cancel-btn" onclick="cancelTask()" disabled style="background:#f44336;">Cancel</button>
+  </div>
+  <div id="progress-area">
+    <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+    <div class="progress-text" id="progress-text">Ready</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Results</h2>
+  <div id="results">No results yet.</div>
+</div>
+
+<div class="card">
+  <h2>Event Log</h2>
+  <div id="log"></div>
+</div>
+
+<script>
+const API_BASE = '/api/v1';
+let currentTaskId = null;
+let eventSource = null;
+
+function getHeaders() {
+  const key = document.getElementById('api-key').value.trim();
+  const h = {};
+  if (key) h['X-API-Key'] = key;
+  return h;
+}
+
+function log(msg, type = 'info') {
+  const el = document.getElementById('log');
+  const ts = new Date().toLocaleTimeString();
+  el.innerHTML += `<div class="log-entry log-${type}">[${ts}] ${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+function setProgress(pct, msg) {
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('progress-text').textContent = msg || `${pct.toFixed(1)}%`;
+}
+
+async function submitTask() {
+  const fileInput = document.getElementById('audio-file');
+  if (!fileInput.files.length) { alert('Please select an audio file'); return; }
+
+  const preset = document.getElementById('preset').value;
+  const device = document.getElementById('device').value;
+  const stems = document.getElementById('stems').value;
+
+  const pipeline = JSON.stringify([{
+    capability: 'split',
+    params: { stem_count: parseInt(stems), device_type: device }
+  }]);
+
+  const formData = new FormData();
+  formData.append('file', fileInput.files[0]);
+  formData.append('preset', preset);
+  formData.append('pipeline', pipeline);
+  formData.append('device_preference', device);
+
+  document.getElementById('submit-btn').disabled = true;
+  document.getElementById('cancel-btn').disabled = false;
+  setProgress(0, 'Uploading...');
+  log('Submitting task...');
+
+  try {
+    const resp = await fetch(`${API_BASE}/tasks`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: formData,
+    });
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      log(`Error: ${data.message || JSON.stringify(data)}`, 'error');
+      resetUI();
+      return;
+    }
+
+    currentTaskId = data.task_id;
+    log(`Task created: ${currentTaskId} (status: ${data.status})`);
+
+    if (data.status === 'done') {
+      log('Cached result returned', 'result');
+      setProgress(100, 'Done (cached)');
+      fetchResults(currentTaskId);
+      resetUI();
+      return;
+    }
+
+    connectSSE(currentTaskId);
+  } catch (e) {
+    log(`Network error: ${e.message}`, 'error');
+    resetUI();
+  }
+}
+
+function connectSSE(taskId) {
+  if (eventSource) eventSource.close();
+
+  const url = `${API_BASE}/tasks/${taskId}/events`;
+  eventSource = new EventSource(url);
+
+  eventSource.addEventListener('progress', (e) => {
+    const data = JSON.parse(e.data);
+    if (data.status === 'running') {
+      setProgress(data.percent || 0, data.message || `Step ${data.step_index}: ${data.step_type}`);
+      log(`Progress [${data.step_type}]: ${data.percent?.toFixed(1) || 0}% - ${data.message || ''}`, 'progress');
+    } else if (data.status === 'completed') {
+      log(`Step ${data.step_index} (${data.step_type}) completed`, 'progress');
+    } else if (data.status === 'failed') {
+      log(`Step ${data.step_index} (${data.step_type}) failed: ${data.error?.error || ''}`, 'error');
+    }
+  });
+
+  eventSource.addEventListener('partial_result', (e) => {
+    const data = JSON.parse(e.data);
+    log(`Partial result [${data.step_type}]: ${JSON.stringify(data.data).slice(0, 200)}`, 'result');
+  });
+
+  eventSource.addEventListener('final_result', (e) => {
+    const data = JSON.parse(e.data);
+    log(`Final: ${data.status}`, data.status === 'done' ? 'progress' : 'error');
+
+    if (data.status === 'done') {
+      setProgress(100, 'Complete');
+    } else {
+      setProgress(100, `Finished with status: ${data.status}`);
+    }
+
+    if (data.urls) {
+      const resultsDiv = document.getElementById('results');
+      resultsDiv.innerHTML = '';
+      data.urls.forEach(u => {
+        if (u.urls) u.urls.forEach(url => {
+          const a = document.createElement('a');
+          a.href = url;
+          a.textContent = url.split('/').pop();
+          a.className = 'result-link';
+          a.download = true;
+          resultsDiv.appendChild(a);
+        });
+      });
+    }
+
+    if (data.errors && data.errors.length) {
+      data.errors.forEach(err => log(`Error step ${err.step_index}: ${err.error}`, 'error'));
+    }
+
+    eventSource.close();
+    eventSource = null;
+    resetUI();
+  });
+
+  eventSource.onerror = () => {
+    log('SSE connection lost', 'error');
+    eventSource.close();
+    eventSource = null;
+    resetUI();
+  };
+}
+
+function cancelTask() {
+  if (eventSource) { eventSource.close(); eventSource = null; }
+  if (currentTaskId) {
+    fetch(`${API_BASE}/tasks/${currentTaskId}`, { method: 'DELETE', headers: getHeaders() });
+    log(`Task ${currentTaskId} cancelled`, 'error');
+  }
+  resetUI();
+  setProgress(0, 'Cancelled');
+}
+
+async function fetchResults(taskId) {
+  const resp = await fetch(`${API_BASE}/tasks/${taskId}`, { headers: getHeaders() });
+  const data = await resp.json();
+  const resultsDiv = document.getElementById('results');
+  resultsDiv.innerHTML = '';
+  if (data.result_urls) {
+    data.result_urls.forEach(u => {
+      if (u.urls) u.urls.forEach(url => {
+        const a = document.createElement('a');
+        a.href = url;
+        a.textContent = url.split('/').pop();
+        a.className = 'result-link';
+        a.download = true;
+        resultsDiv.appendChild(a);
+      });
+    });
+  }
+}
+
+function resetUI() {
+  document.getElementById('submit-btn').disabled = false;
+  document.getElementById('cancel-btn').disabled = true;
+}
+
+log('RMMS AI Server test console ready');
+</script>
+</body>
+</html>

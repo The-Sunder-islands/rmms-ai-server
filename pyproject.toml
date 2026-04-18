@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rmms-ai-server"
+version = "1.0.0a1"
+description = "RMMS AI Server - Reference implementation of the RMMS AI Server Protocol"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "The-Sunder-islands"},
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Topic :: Multimedia :: Sound/Audio :: Analysis",
+]
+
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+    "pydantic>=2.6.0",
+    "pydantic-settings>=2.2.0",
+    "python-multipart>=0.0.9",
+    "soundfile>=0.12.0",
+    "numpy>=1.24.0",
+    "demucs>=4.0.0",
+    "zeroconf>=0.131.0",
+]
+
+[project.optional-dependencies]
+midi = ["basic-pitch>=0.3.0"]
+npu = ["torch_npu"]
+fftw = ["pyFFTW"]
+dev = [
+    "ruff>=0.4.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.27.0",
+]
+
+[project.scripts]
+rmms-ai-server = "rmms_ai_server.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["rmms_ai_server*"]
+
+[tool.setuptools.package-data]
+rmms_ai_server = ["static/*.html"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["rmms_ai_server"]
