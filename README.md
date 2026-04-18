@@ -61,7 +61,7 @@ pip install -e .
 # 直接启动（默认端口 8420）
 rmms-ai-server
 
-# 或通过 Python 模块启动
+# 在 Windows 下，rmms-ai-server 可能不起作用，这时请通过 Python 模块启动
 python -m rmms_ai_server
 
 # 自定义参数
