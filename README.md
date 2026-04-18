@@ -42,7 +42,7 @@ cd rmms-ai-server
 # 创建虚拟环境
 python3 -m venv .venv
 source .venv/bin/activate  # Linux/macOS
-# .venv\Scripts\activate   # Windows
+# .venv\Scripts\Activate.ps1   # Windows
 
 # ⚠️ PyTorch 需要根据你的设备手动安装对应版本：
 # CUDA:
