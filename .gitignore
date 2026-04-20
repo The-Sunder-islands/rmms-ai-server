@@ -11,6 +11,10 @@ build/
 venv/
 env/
 
+
+/ripx_rip/
+
+
 uploads/
 outputs/
 /models/
