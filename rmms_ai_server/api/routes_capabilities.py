@@ -32,7 +32,7 @@ def _build_capabilities() -> list[Capability]:
                 ParamDef(key="overlap", type=ParamType.FLOAT, label="Overlap",
                          default=0.17, min_val=0.0, max_val=0.99, step=0.01),
                 ParamDef(key="device_type", type=ParamType.ENUM, label="Device",
-                         default="auto", choices=["auto", "cuda", "npu", "xpu", "mps", "cpu"]),
+                         default="auto", choices=["auto", "cuda", "dml", "npu", "xpu", "mps", "cpu"]),
             ],
             models=["htdemucs", "htdemucs_6s", "mdx_extra_q"],
             default_model="htdemucs_6s",

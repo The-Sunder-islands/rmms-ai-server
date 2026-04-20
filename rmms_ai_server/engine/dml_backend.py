@@ -9,31 +9,62 @@ from .device_backend import DeviceBackend, SectionConfig, register_backend
 
 logger = logging.getLogger(__name__)
 
+_DML_NEW_API = None
+
+
+def _detect_api():
+    global _DML_NEW_API
+    if _DML_NEW_API is not None:
+        return _DML_NEW_API
+    try:
+        import torch
+        if hasattr(torch, "dml") and hasattr(torch.dml, "is_available"):
+            _DML_NEW_API = True
+            return True
+    except Exception:
+        pass
+    try:
+        import torch_directml
+        _DML_NEW_API = False
+        return False
+    except Exception:
+        pass
+    _DML_NEW_API = False
+    return False
+
 
 @register_backend
-class NPUBackend(DeviceBackend):
+class DMLBackend(DeviceBackend):
     _lock = threading.Lock()
     _available: dict[int, bool] = {}
 
     @property
     def device_type(self) -> str:
-        return "npu"
+        return "dml"
 
     @property
     def name(self) -> str:
-        return "Huawei NPU (Ascend)"
+        return "DirectML"
 
     def is_available(self) -> bool:
         try:
-            import torch_npu
-            return torch_npu.npu.is_available()
+            if _detect_api():
+                import torch
+                return torch.dml.is_available()
+            else:
+                import torch_directml
+                return torch_directml.device_count() > 0
         except Exception:
             return False
 
     def device_count(self) -> int:
         try:
-            import torch_npu
-            return torch_npu.npu.device_count()
+            if _detect_api():
+                import torch
+                return torch.dml.device_count()
+            else:
+                import torch_directml
+                return torch_directml.device_count()
         except Exception:
             return 0
 
@@ -42,13 +73,16 @@ class NPUBackend(DeviceBackend):
         units = []
         for i in range(count):
             try:
-                import torch_npu
-                name = torch_npu.npu.get_device_name(i)
-                units.append(DeviceUnit(id=str(i), name=name, type="npu"))
+                if _detect_api():
+                    import torch
+                    dev_name = torch.dml.device_name(i)
+                else:
+                    dev_name = f"DirectML Device {i}"
+                units.append(DeviceUnit(id=str(i), name=dev_name, type="dml"))
             except Exception:
-                units.append(DeviceUnit(id=str(i), name=f"NPU:{i}", type="npu"))
+                units.append(DeviceUnit(id=str(i), name=f"DML:{i}", type="dml"))
         return DeviceInfo(
-            type="npu", name="Huawei NPU (Ascend)",
+            type="dml", name="DirectML",
             available=count > 0, units=units,
         )
 
@@ -76,7 +110,9 @@ class NPUBackend(DeviceBackend):
             self._available[device_id] = True
 
     def get_torch_device_str(self, device_id: int) -> str:
-        return f"npu:{device_id}"
+        if _detect_api():
+            return f"dml:{device_id}"
+        return f"privateuseone:{device_id}"
 
     def get_section_config(self) -> SectionConfig:
-        return SectionConfig(threshold=600.0, section_duration=600.0, max_sections=0)
+        return SectionConfig(threshold=150.0, section_duration=150.0, max_sections=0)

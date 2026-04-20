@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import threading
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Optional
 
 from rmms_ai_server.models.protocol import DeviceInfo, DeviceUnit
@@ -12,6 +13,13 @@ logger = logging.getLogger(__name__)
 _backends: dict[str, type[DeviceBackend]] = {}
 _backends_lock = threading.Lock()
 _instances: dict[str, DeviceBackend] = {}
+
+
+@dataclass(frozen=True)
+class SectionConfig:
+    threshold: float
+    section_duration: float
+    max_sections: int
 
 
 class DeviceBackend(ABC):
@@ -40,6 +48,9 @@ class DeviceBackend(ABC):
 
     @abstractmethod
     def get_torch_device_str(self, device_id: int) -> str: ...
+
+    @abstractmethod
+    def get_section_config(self) -> SectionConfig: ...
 
 
 def register_backend(backend_cls: type[DeviceBackend]) -> type[DeviceBackend]:
@@ -70,7 +81,7 @@ def get_all_backends() -> list[DeviceBackend]:
     return result
 
 
-_AUTO_PRIORITY = ["cuda", "npu", "xpu", "mps", "cpu"]
+_AUTO_PRIORITY = ["cuda", "dml", "npu", "xpu", "mps", "cpu"]
 
 
 def resolve_device_type(device_type: str) -> str:
@@ -89,6 +100,7 @@ def resolve_device_type(device_type: str) -> str:
 def _auto_discover():
     for module_name in [
         "rmms_ai_server.engine.cuda_backend",
+        "rmms_ai_server.engine.dml_backend",
         "rmms_ai_server.engine.npu_backend",
         "rmms_ai_server.engine.xpu_backend",
         "rmms_ai_server.engine.mps_backend",

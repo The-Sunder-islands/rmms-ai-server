@@ -12,7 +12,7 @@ import torch
 
 from rmms_ai_server.config import settings
 from rmms_ai_server.models.errors import DeviceError, ModelError, ErrorCode
-from .device_backend import get_backend, resolve_device_type
+from .device_backend import get_backend, resolve_device_type, SectionConfig
 
 logger = logging.getLogger(__name__)
 
@@ -48,17 +48,16 @@ def _saturating_add(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 
 
 def _calc_section_count(duration_sec: float, device_type: str) -> int:
-    if device_type == "npu":
-        return 1 if duration_sec <= 600 else max(1, int(duration_sec / 600))
-    elif device_type == "cuda":
-        return 1 if duration_sec <= 300 else max(1, int(duration_sec / 300))
-    else:
-        if duration_sec <= 300:
-            return 1
-        elif duration_sec <= 600:
-            return 2
-        else:
-            return max(1, min(8, int(duration_sec / 300)))
+    backend = get_backend(device_type)
+    if backend is None:
+        return 1
+    cfg = backend.get_section_config()
+    if duration_sec <= cfg.threshold:
+        return 1
+    n = max(1, int(duration_sec / cfg.section_duration))
+    if cfg.max_sections > 0:
+        n = min(n, cfg.max_sections)
+    return n
 
 
 def _create_backing_track(output_dir: str, stem_names: list[str]):

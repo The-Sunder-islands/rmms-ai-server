@@ -5,7 +5,7 @@ import os
 from typing import Optional
 
 from rmms_ai_server.models.protocol import DeviceInfo, DeviceUnit
-from .device_backend import DeviceBackend, register_backend
+from .device_backend import DeviceBackend, SectionConfig, register_backend
 
 logger = logging.getLogger(__name__)
 
@@ -41,3 +41,6 @@ class CPUBackend(DeviceBackend):
 
     def get_torch_device_str(self, device_id: int) -> str:
         return "cpu"
+
+    def get_section_config(self) -> SectionConfig:
+        return SectionConfig(threshold=300.0, section_duration=300.0, max_sections=8)
