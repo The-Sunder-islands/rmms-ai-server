@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import os
-import shutil
 import json
 import time
 import urllib.request
-import tempfile
 from pathlib import Path
 from typing import Optional
 

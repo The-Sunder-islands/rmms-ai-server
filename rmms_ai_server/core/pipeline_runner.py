@@ -7,7 +7,6 @@ import shutil
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 from typing import Any, Callable, Optional
 
 from rmms_ai_server.config import settings
@@ -16,7 +15,6 @@ from rmms_ai_server.models.protocol import (
 )
 from rmms_ai_server.models.errors import RMMSAIError, PipelineError, ErrorCode
 from rmms_ai_server.core.sse_manager import sse_manager
-from rmms_ai_server.core.cache_manager import cache_manager
 from rmms_ai_server.engine.split_engine import run_split
 from rmms_ai_server.engine.midi_engine import run_midi
 from rmms_ai_server.engine.detect_engine import run_detect
