@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     port: int = 8420
     api_key: str = ""
     max_concurrent_tasks: int = 4
+    max_queue_size: int = 20
     max_upload_mb: int = 500
     task_ttl_seconds: int = 3600
     cleanup_interval_seconds: int = 300

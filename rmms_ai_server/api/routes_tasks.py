@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import os
 import shutil
+import json
+import time
+import urllib.request
+import tempfile
 from pathlib import Path
 from typing import Optional
 
-import time
-
-from fastapi import APIRouter, File, Form, UploadFile, Query, Request
+from fastapi import APIRouter, File, Form, UploadFile, Query, Request, Body
 from fastapi.responses import JSONResponse
 
 from rmms_ai_server.config import settings
 from rmms_ai_server.models.protocol import TaskStatus, PipelineStep
-from rmms_ai_server.models.errors import InputError, ErrorCode, RMMSAIError
+from rmms_ai_server.models.errors import InputError, ErrorCode, RMMSAIError, QuotaError
 from rmms_ai_server.models.requests import TaskSubmitJSON, TaskSubmitResponse, TaskStatusResponse
 from rmms_ai_server.core.task_manager import task_manager
 from rmms_ai_server.core.pipeline_defs import resolve_pipeline
@@ -30,58 +32,144 @@ def _allowed_file(filename: str) -> bool:
     return ext in ALLOWED_EXTENSIONS
 
 
-@router.post("/tasks", response_model=TaskSubmitResponse)
-async def submit_task(
-    request: Request,
-    file: Optional[UploadFile] = File(None),
-    pipeline: Optional[str] = Form(None),
-    preset: Optional[str] = Form(None),
-    device_preference: Optional[str] = Form(None),
-    priority: Optional[int] = Form(None),
-    force_refresh: bool = Form(False),
-    audio_url: Optional[str] = Form(None),
-):
-    if file is None and audio_url is None:
+def _save_upload(content: bytes, filename: str) -> tuple[str, str]:
+    task_id_placeholder = os.urandom(8).hex()
+    upload_dir = str(settings.resolved_upload_dir / task_id_placeholder)
+    Path(upload_dir).mkdir(parents=True, exist_ok=True)
+    input_path = os.path.join(upload_dir, filename)
+    with open(input_path, "wb") as f:
+        f.write(content)
+    return input_path, upload_dir
+
+
+def _download_file(url: str) -> bytes:
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "RMMS-AI-Server/1.0"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            if resp.status != 200:
+                raise InputError(ErrorCode.INPUT_FORMAT_UNSUPPORTED, f"Failed to download file: HTTP {resp.status}")
+            size = resp.headers.get("Content-Length")
+            if size and int(size) > settings.max_upload_bytes:
+                raise InputError(ErrorCode.INPUT_TOO_LARGE,
+                                 f"Remote file too large ({int(size) // (1024*1024)}MB). Maximum: {settings.max_upload_mb}MB")
+            return resp.read()
+    except InputError:
+        raise
+    except Exception as e:
+        raise InputError(ErrorCode.INPUT_FORMAT_UNSUPPORTED, f"Failed to download file: {e}")
+
+
+@router.post("/tasks")
+async def submit_task(request: Request):
+    content_type = request.headers.get("content-type", "")
+
+    if "application/json" in content_type:
+        return await _submit_json(request)
+    elif "multipart/form-data" in content_type:
+        return await _submit_multipart(request)
+    else:
+        raise InputError(ErrorCode.INPUT_FORMAT_UNSUPPORTED,
+                         f"Unsupported Content-Type: {content_type}. Use multipart/form-data or application/json")
+
+
+async def _submit_json(request: Request):
+    body = await request.json()
+    try:
+        data = TaskSubmitJSON(**body)
+    except Exception as e:
+        raise InputError(ErrorCode.PIPELINE_INVALID, f"Invalid request body: {e}")
+
+    if data.input_url:
+        content = _download_file(data.input_url)
+        filename = os.path.basename(data.input_url.split("?")[0].split("/")[-1]) or "input.wav"
+        if not _allowed_file(filename):
+            raise InputError(ErrorCode.INPUT_FORMAT_UNSUPPORTED,
+                             f"Unsupported file type. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}")
+        if len(content) > settings.max_upload_bytes:
+            raise InputError(ErrorCode.INPUT_TOO_LARGE,
+                             f"File too large ({len(content) // (1024*1024)}MB). Maximum: {settings.max_upload_mb}MB")
+        input_path, _ = _save_upload(content, filename)
+    elif data.pipeline and data.pipeline[0].input is None:
+        raise InputError(ErrorCode.INPUT_MISSING, "No input_url provided and first step has no input")
+    else:
         raise InputError(ErrorCode.INPUT_MISSING, "No audio file or URL provided")
 
-    input_path = None
-    file_hash = None
+    file_hash = cache_manager.compute_file_hash(input_path)
+    resolved = data.pipeline
 
-    if file is not None:
-        if not file.filename:
-            raise InputError(ErrorCode.INPUT_MISSING, "Empty filename")
-
-        if not _allowed_file(file.filename):
-            raise InputError(
-                ErrorCode.INPUT_FORMAT_UNSUPPORTED,
-                f"Unsupported file type. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
+    if not data.force_refresh and file_hash:
+        params_key = {"pipeline": [s.model_dump(by_alias=True) for s in resolved], "device": data.device_preference}
+        cached = cache_manager.get(file_hash, params_key)
+        if cached:
+            return TaskSubmitResponse(
+                task_id=cached["task_id"], status="done", message="Cached result",
+                cached=True, created_at=cached.get("created_at", ""),
             )
 
-        content = await file.read()
-        if len(content) > settings.max_upload_bytes:
-            raise InputError(
-                ErrorCode.INPUT_TOO_LARGE,
-                f"File too large ({len(content) // (1024*1024)}MB). Maximum: {settings.max_upload_mb}MB"
-            )
+    try:
+        task = await task_manager.create_task(
+            pipeline=resolved, input_path=input_path,
+            device_preference=data.device_preference,
+            priority=data.priority,
+        )
+    except QuotaError:
+        raise
+    except Exception as e:
+        raise InputError(ErrorCode.SERVER_ERROR, str(e))
 
-        task_id_placeholder = os.urandom(8).hex()
-        upload_dir = str(settings.resolved_upload_dir / task_id_placeholder)
-        Path(upload_dir).mkdir(parents=True, exist_ok=True)
+    if file_hash:
+        params_key = {"pipeline": [s.model_dump(by_alias=True) for s in resolved], "device": data.device_preference}
+        cache_manager.put(file_hash, params_key, {"task_id": task.task_id})
 
-        input_path = os.path.join(upload_dir, file.filename)
-        with open(input_path, "wb") as f:
-            f.write(content)
+    return JSONResponse(
+        status_code=201,
+        content=TaskSubmitResponse(
+            task_id=task.task_id, status="queued", message="Task submitted successfully",
+            pipeline=resolved,
+            created_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(task.created_at)),
+        ).model_dump(by_alias=True),
+    )
 
-        file_hash = cache_manager.compute_file_hash(input_path)
 
-    elif audio_url:
-        raise InputError(ErrorCode.INPUT_FORMAT_UNSUPPORTED, "URL input not yet implemented")
+async def _submit_multipart(request: Request):
+    form = await request.form()
+    file = form.get("file")
+    pipeline_str = form.get("pipeline")
+    preset = form.get("preset")
+    device_preference = form.get("device_preference")
+    priority = form.get("priority")
+    force_refresh = form.get("force_refresh", "false") == "true"
 
-    import json
-    pipeline_steps = None
-    if pipeline:
+    if isinstance(priority, str):
         try:
-            pipeline_steps = json.loads(pipeline)
+            priority = int(priority)
+        except (ValueError, TypeError):
+            priority = None
+
+    if file is None:
+        raise InputError(ErrorCode.INPUT_MISSING, "No audio file provided")
+
+    filename = getattr(file, "filename", "")
+    if not _allowed_file(filename):
+        raise InputError(
+            ErrorCode.INPUT_FORMAT_UNSUPPORTED,
+            f"Unsupported file type. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
+        )
+
+    content = await file.read()
+    if len(content) > settings.max_upload_bytes:
+        raise InputError(
+            ErrorCode.INPUT_TOO_LARGE,
+            f"File too large ({len(content) // (1024*1024)}MB). Maximum: {settings.max_upload_mb}MB"
+        )
+
+    input_path, _ = _save_upload(content, filename)
+    file_hash = cache_manager.compute_file_hash(input_path)
+
+    pipeline_steps = None
+    if pipeline_str:
+        try:
+            pipeline_steps = json.loads(pipeline_str)
         except json.JSONDecodeError:
             raise InputError(ErrorCode.INPUT_INVALID_PARAMS, "Invalid pipeline JSON")
 
@@ -92,19 +180,19 @@ async def submit_task(
         cached = cache_manager.get(file_hash, params_key)
         if cached:
             return TaskSubmitResponse(
-                task_id=cached["task_id"],
-                status="done",
-                message="Cached result",
-                cached=True,
-                created_at=cached.get("created_at", ""),
+                task_id=cached["task_id"], status="done", message="Cached result",
+                cached=True, created_at=cached.get("created_at", ""),
             )
 
-    task = await task_manager.create_task(
-        pipeline=resolved,
-        input_path=input_path,
-        device_preference=device_preference,
-        priority=priority,
-    )
+    try:
+        task = await task_manager.create_task(
+            pipeline=resolved, input_path=input_path,
+            device_preference=device_preference, priority=priority,
+        )
+    except QuotaError:
+        raise
+    except Exception as e:
+        raise InputError(ErrorCode.SERVER_ERROR, str(e))
 
     if file_hash:
         params_key = {"preset": preset, "pipeline": pipeline_steps, "device": device_preference}
@@ -113,9 +201,7 @@ async def submit_task(
     return JSONResponse(
         status_code=201,
         content=TaskSubmitResponse(
-            task_id=task.task_id,
-            status="queued",
-            message="Task submitted successfully",
+            task_id=task.task_id, status="queued", message="Task submitted successfully",
             pipeline=resolved,
             created_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(task.created_at)),
         ).model_dump(by_alias=True),

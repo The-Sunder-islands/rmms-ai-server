@@ -118,7 +118,7 @@ async def get_capabilities():
         devices=_build_devices(),
         scheduler=SchedulerInfo(
             max_concurrent_tasks=settings.max_concurrent_tasks,
-            max_queue_size=settings.max_concurrent_tasks * 5,
+            max_queue_size=settings.max_queue_size,
         ),
         output_formats=["wav", "flac", "mp3"],
         output_packages=["separate", "zip"],

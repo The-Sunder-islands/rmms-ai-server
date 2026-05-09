@@ -52,12 +52,34 @@ class TaskManager:
         priority: Optional[int] = None,
     ) -> TaskInfo:
         async with self._lock:
+            total_tasks = len(self._tasks)
             if self._active_count >= settings.max_concurrent_tasks:
-                raise QuotaError(
-                    ErrorCode.SERVER_BUSY,
-                    f"Too many concurrent tasks (max {settings.max_concurrent_tasks})",
-                    details={"retry_after": 30, "max_concurrent": settings.max_concurrent_tasks},
-                )
+                queued = sum(1 for t in self._tasks.values() if t.status == TaskStatus.QUEUED)
+                if queued >= settings.max_queue_size:
+                    raise QuotaError(
+                        ErrorCode.QUOTA_EXCEEDED,
+                        f"Queue full ({queued}/{settings.max_queue_size})",
+                        details={
+                            "retry_after": 30,
+                            "queue_position": queued,
+                            "max_queue_size": settings.max_queue_size,
+                            "max_concurrent_tasks": settings.max_concurrent_tasks,
+                            "current_tasks": self._active_count,
+                        },
+                    )
+                else:
+                    raise QuotaError(
+                        ErrorCode.QUOTA_EXCEEDED,
+                        f"Too many concurrent tasks (max {settings.max_concurrent_tasks}), "
+                        f"queue: {queued}/{settings.max_queue_size}",
+                        details={
+                            "retry_after": 10 if queued < settings.max_queue_size / 2 else 30,
+                            "queue_position": queued + 1,
+                            "max_queue_size": settings.max_queue_size,
+                            "max_concurrent_tasks": settings.max_concurrent_tasks,
+                            "current_tasks": self._active_count,
+                        },
+                    )
 
             task_id = str(uuid.uuid4())
             task = TaskInfo(
