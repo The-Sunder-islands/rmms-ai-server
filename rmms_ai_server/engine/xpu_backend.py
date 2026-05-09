@@ -51,6 +51,7 @@ class XPUBackend(DeviceBackend):
                 units.append(DeviceUnit(device_index=i, name=f"XPU:{i}"))
         return DeviceInfo(
             device_type="xpu", available=count > 0, count=count, units=units,
+            install_hint=None if count > 0 else "pip install intel-extension-for-pytorch",
         )
 
     def acquire_device(self, preferred: Optional[int] = None) -> Optional[int]:

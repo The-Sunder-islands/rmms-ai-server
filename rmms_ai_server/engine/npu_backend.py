@@ -49,6 +49,7 @@ class NPUBackend(DeviceBackend):
                 units.append(DeviceUnit(device_index=i, name=f"NPU:{i}"))
         return DeviceInfo(
             device_type="npu", available=count > 0, count=count, units=units,
+            install_hint=None if count > 0 else "pip install torch-npu",
         )
 
     def acquire_device(self, preferred: Optional[int] = None) -> Optional[int]:

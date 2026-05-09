@@ -27,6 +27,11 @@ _model_cache: dict[str, Any] = {}
 _model_cache_lock = threading.Lock()
 
 
+def get_loaded_models() -> list[str]:
+    with _model_cache_lock:
+        return list(_model_cache.keys())
+
+
 def _get_model(model_name: str, repo: Optional[str] = None):
     with _model_cache_lock:
         if model_name in _model_cache:

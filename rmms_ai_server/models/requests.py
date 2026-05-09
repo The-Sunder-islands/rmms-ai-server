@@ -7,8 +7,8 @@ from .protocol import PipelineStep, StepResultURL, StepError
 
 
 class TaskSubmitJSON(BaseModel):
-    pipeline: list[PipelineStep]
     input_url: Optional[str] = None
+    pipeline: Optional[dict[str, Any]] = None
     device_preference: Optional[str] = None
     device_index: Optional[int] = None
     priority: Optional[int] = Field(None, ge=1, le=10)

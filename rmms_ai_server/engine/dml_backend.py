@@ -83,6 +83,7 @@ class DMLBackend(DeviceBackend):
                 units.append(DeviceUnit(device_index=i, name=f"DML:{i}"))
         return DeviceInfo(
             device_type="dml", available=count > 0, count=count, units=units,
+            install_hint=None if count > 0 else "pip install torch-directml",
         )
 
     def acquire_device(self, preferred: Optional[int] = None) -> Optional[int]:

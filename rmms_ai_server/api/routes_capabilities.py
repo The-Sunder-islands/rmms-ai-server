@@ -101,11 +101,7 @@ def _build_capabilities() -> list[Capability]:
 def _build_devices() -> list[DeviceInfo]:
     devices = []
     for backend in get_all_backends():
-        info = backend.get_device_info()
-        if info.available:
-            devices.append(info)
-        else:
-            devices.append(info)
+        devices.append(backend.get_device_info())
     return devices
 
 

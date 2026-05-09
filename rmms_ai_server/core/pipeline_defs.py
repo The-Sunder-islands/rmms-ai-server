@@ -23,8 +23,10 @@ PRESET_PIPELINES: dict[str, list[dict]] = {
 }
 
 
-def resolve_pipeline(pipeline_data: list[dict] | None, preset_name: str | None = None) -> list[PipelineStep]:
-    if pipeline_data:
+def resolve_pipeline(pipeline_data: list[dict] | dict | None, preset_name: str | None = None) -> list[PipelineStep]:
+    if isinstance(pipeline_data, dict) and "steps" in pipeline_data:
+        return [PipelineStep(**step) for step in pipeline_data["steps"]]
+    if pipeline_data and isinstance(pipeline_data, list):
         return [PipelineStep(**step) for step in pipeline_data]
 
     if preset_name and preset_name in PRESET_PIPELINES:

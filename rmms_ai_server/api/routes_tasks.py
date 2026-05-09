@@ -79,6 +79,21 @@ async def _submit_json(request: Request):
     except Exception as e:
         raise InputError(ErrorCode.PIPELINE_INVALID, f"Invalid request body: {e}")
 
+    if data.pipeline:
+        pipeline_raw = data.pipeline
+        if isinstance(pipeline_raw, dict) and "steps" in pipeline_raw:
+            resolved = resolve_pipeline(pipeline_raw["steps"], None)
+        elif isinstance(pipeline_raw, list):
+            resolved = resolve_pipeline(pipeline_raw, None)
+        else:
+            raise InputError(ErrorCode.PIPELINE_INVALID, "Invalid pipeline format, expected {steps: [...]}")
+    else:
+        resolved = resolve_pipeline(None, None)
+
+    if not data.input_url:
+        if not resolved or resolved[0].input is not None:
+            raise InputError(ErrorCode.INPUT_MISSING, "No input_url provided and first step has no input")
+    input_path = None
     if data.input_url:
         content = _download_file(data.input_url)
         filename = os.path.basename(data.input_url.split("?")[0].split("/")[-1]) or "input.wav"
@@ -89,13 +104,8 @@ async def _submit_json(request: Request):
             raise InputError(ErrorCode.INPUT_TOO_LARGE,
                              f"File too large ({len(content) // (1024*1024)}MB). Maximum: {settings.max_upload_mb}MB")
         input_path, _ = _save_upload(content, filename)
-    elif data.pipeline and data.pipeline[0].input is None:
-        raise InputError(ErrorCode.INPUT_MISSING, "No input_url provided and first step has no input")
-    else:
-        raise InputError(ErrorCode.INPUT_MISSING, "No audio file or URL provided")
 
-    file_hash = cache_manager.compute_file_hash(input_path)
-    resolved = data.pipeline
+    file_hash = cache_manager.compute_file_hash(input_path) if input_path else None
 
     if not data.force_refresh and file_hash:
         params_key = {"pipeline": [s.model_dump(by_alias=True) for s in resolved], "device": data.device_preference}

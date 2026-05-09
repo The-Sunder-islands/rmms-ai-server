@@ -33,6 +33,7 @@ class MPSBackend(DeviceBackend):
         return DeviceInfo(
             device_type="mps", available=self.is_available(), count=1 if self.is_available() else 0,
             units=[DeviceUnit(device_index=0, name="Apple GPU")] if self.is_available() else [],
+            install_hint=None if self.is_available() else "MPS requires macOS 12.3+ with Apple Silicon",
         )
 
     def acquire_device(self, preferred: Optional[int] = None) -> Optional[int]:

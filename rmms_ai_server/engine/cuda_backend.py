@@ -55,6 +55,7 @@ class CUDABackend(DeviceBackend):
                 units.append(DeviceUnit(device_index=i, name=f"CUDA:{i}"))
         return DeviceInfo(
             device_type="cuda", available=count > 0, count=count, units=units,
+            install_hint=None if count > 0 else "pip install torch --index-url https://download.pytorch.org/whl/cu128",
         )
 
     def acquire_device(self, preferred: Optional[int] = None) -> Optional[int]:
