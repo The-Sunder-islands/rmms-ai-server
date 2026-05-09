@@ -85,7 +85,7 @@ def create_app() -> FastAPI:
     async def rmms_error_handler(request: Request, exc: RMMSAIError):
         return JSONResponse(
             status_code=exc.http_status,
-            content=exc.to_dict(),
+            content={"error": exc.to_dict()},
         )
 
     @app.middleware("http")
@@ -94,7 +94,10 @@ def create_app() -> FastAPI:
             try:
                 await verify_api_key(request)
             except RMMSAIError as e:
-                return JSONResponse(status_code=e.http_status, content=e.to_dict())
+                return JSONResponse(
+                    status_code=e.http_status,
+                    content={"error": e.to_dict()},
+                )
         response = await call_next(request)
         if request.url.path.startswith("/api/v1"):
             response.headers["X-Protocol-Version"] = PROTOCOL_VERSION

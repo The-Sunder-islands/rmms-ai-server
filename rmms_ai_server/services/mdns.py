@@ -4,6 +4,8 @@ import logging
 import socket
 from typing import Optional
 
+from rmms_ai_server import PROTOCOL_VERSION
+
 logger = logging.getLogger(__name__)
 
 
@@ -13,6 +15,15 @@ class MDNSService:
         self._name = name
         self._zeroconf = None
         self._service_info = None
+
+    @staticmethod
+    def _get_available_devices() -> str:
+        try:
+            from rmms_ai_server.engine.device_backend import get_all_backends
+            devices = [b.device_type for b in get_all_backends() if b.is_available()]
+            return ",".join(devices) if devices else "cpu"
+        except Exception:
+            return "cpu"
 
     def start(self) -> None:
         try:
@@ -35,7 +46,8 @@ class MDNSService:
             addresses=[socket.inet_aton(local_ip)],
             port=self._port,
             properties={
-                "protocol": b"1.0.0-alpha",
+                "protocol_version": PROTOCOL_VERSION.encode() if isinstance(PROTOCOL_VERSION, str) else str(PROTOCOL_VERSION).encode(),
+                "devices": self._get_available_devices().encode(),
                 "path": b"/api/v1",
             },
         )
