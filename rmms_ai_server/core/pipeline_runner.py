@@ -56,7 +56,7 @@ class PipelineRunner:
         if task is None:
             return
 
-        task.status = TaskStatus.RUNNING
+        task.status = TaskStatus.PROCESSING
         task.started_at = time.time()
 
         all_urls: list[StepResultURL] = []
@@ -92,30 +92,35 @@ class PipelineRunner:
                 step_urls = self._collect_urls(task_id, step_output_dir, i, step.capability)
                 all_urls.extend(step_urls)
 
+                flat_urls = [url for sr in step_urls for url in sr.urls]
                 sse_manager.send_progress_completed(
-                    task_id, i, step.capability, step_urls
+                    task_id, i, step.capability, flat_urls
                 )
 
             except RMMSAIError as e:
-                error = StepError(step_index=i, step_type=step.capability, error=e.message)
+                err_dict = {"code": e.code.value, "message": e.message}
+                if e.details:
+                    err_dict["details"] = e.details
+                error = StepError(step_index=i, step_type=step.capability, error=err_dict)
                 all_errors.append(error)
-                sse_manager.send_progress_failed(task_id, i, step.capability, error)
+                sse_manager.send_progress_failed(task_id, i, step.capability, err_dict)
 
                 for j in range(i + 1, len(pipeline)):
                     dep = pipeline[j].input
                     if dep and dep.from_step == i:
                         skip_error = StepError(
                             step_index=j, step_type=pipeline[j].capability,
-                            error=f"Skipped: dependency step {i} failed"
+                            error={"code": "PIPELINE_INVALID", "message": f"Skipped: dependency step {i} failed"}
                         )
                         all_errors.append(skip_error)
 
                 break
 
             except Exception as e:
-                error = StepError(step_index=i, step_type=step.capability, error=str(e))
+                err_dict = {"code": "SERVER_ERROR", "message": str(e)}
+                error = StepError(step_index=i, step_type=step.capability, error=err_dict)
                 all_errors.append(error)
-                sse_manager.send_progress_failed(task_id, i, step.capability, error)
+                sse_manager.send_progress_failed(task_id, i, step.capability, err_dict)
                 break
 
         if all_errors:
@@ -123,13 +128,22 @@ class PipelineRunner:
         else:
             final_status = FinalStatus.DONE
 
-        task.status = TaskStatus.COMPLETED if final_status == FinalStatus.DONE else TaskStatus.FAILED
+        if final_status == FinalStatus.DONE:
+            task.status = TaskStatus.DONE
+        elif final_status == FinalStatus.PARTIAL_ERROR:
+            task.status = TaskStatus.PARTIAL_ERROR
+        else:
+            task.status = TaskStatus.ERROR
         task.finished_at = time.time()
         task.result_urls = all_urls
         task.step_errors = all_errors
 
+        completed_steps = [sr.step_index for sr in all_urls]
+        failed_steps = [se.step_index for se in all_errors]
+
         sse_manager.send_final_result(
-            task_id, final_status, urls=all_urls, errors=all_errors
+            task_id, final_status, urls=all_urls, errors=all_errors,
+            completed_steps=completed_steps, failed_steps=failed_steps,
         )
 
     async def _run_step(
@@ -176,7 +190,7 @@ class PipelineRunner:
         for fname in sorted(os.listdir(output_dir)):
             fpath = os.path.join(output_dir, fname)
             if os.path.isfile(fpath):
-                file_urls.append(f"/api/v1/files/{task_id}/{step_type}/{fname}")
+                file_urls.append(f"/api/v1/files/{task_id}/{fname}")
 
         return [StepResultURL(step_index=step_index, step_type=step_type, urls=file_urls)]
 

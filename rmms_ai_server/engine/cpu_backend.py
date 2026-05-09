@@ -29,8 +29,8 @@ class CPUBackend(DeviceBackend):
     def get_device_info(self) -> DeviceInfo:
         cores = os.cpu_count() or 1
         return DeviceInfo(
-            type="cpu", name="CPU", available=True,
-            units=[DeviceUnit(id="0", name=f"CPU ({cores} cores)", type="cpu")],
+            device_type="cpu", available=True, count=1,
+            units=[DeviceUnit(device_index=0, name=f"CPU ({cores} cores)")],
         )
 
     def acquire_device(self, preferred: Optional[int] = None) -> Optional[int]:

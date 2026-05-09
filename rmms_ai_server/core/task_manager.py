@@ -52,11 +52,12 @@ class TaskManager:
         async with self._lock:
             if self._active_count >= settings.max_concurrent_tasks:
                 raise QuotaError(
-                    ErrorCode.SERVER_OVERLOADED,
+                    ErrorCode.SERVER_BUSY,
                     f"Too many concurrent tasks (max {settings.max_concurrent_tasks})",
+                    details={"retry_after": 30, "max_concurrent": settings.max_concurrent_tasks},
                 )
 
-            task_id = uuid.uuid4().hex[:16]
+            task_id = str(uuid.uuid4())
             task = TaskInfo(
                 task_id=task_id,
                 status=TaskStatus.QUEUED,
@@ -99,7 +100,7 @@ class TaskManager:
             logger.exception(f"Pipeline runner error for task {task_id}")
             task = self._tasks.get(task_id)
             if task is not None:
-                task.status = TaskStatus.FAILED
+                task.status = TaskStatus.ERROR
                 task.error = str(e)
                 task.finished_at = time.time()
         finally:
@@ -120,7 +121,7 @@ class TaskManager:
             if task is None:
                 return False
 
-            was_active = task.status in (TaskStatus.QUEUED, TaskStatus.RUNNING)
+            was_active = task.status in (TaskStatus.QUEUED, TaskStatus.PROCESSING)
 
             task.status = TaskStatus.CANCELLED
             task.finished_at = time.time()
@@ -150,7 +151,7 @@ class TaskManager:
 
         async with self._lock:
             for task_id, task in self._tasks.items():
-                if task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED):
+                if task.status in (TaskStatus.DONE, TaskStatus.ERROR, TaskStatus.PARTIAL_ERROR, TaskStatus.CANCELLED):
                     if task.finished_at and (now - task.finished_at) > settings.task_ttl_seconds:
                         to_delete.append(task_id)
 

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from rmms_ai_server import PROTOCOL_VERSION
+from rmms_ai_server import PROTOCOL_VERSION, __version__
 from rmms_ai_server.config import settings
 from rmms_ai_server.engine.device_backend import get_all_backends
 from rmms_ai_server.models.protocol import (
-    CapabilitiesResponse, Capability, CapabilityStatus, TrackType,
-    ParamDef, ParamType, DeviceInfo, SchedulerInfo, OutputFormat,
+    CapabilitiesResponse, Capability, CapabilityStatus,
+    ParamDef, ParamType, DeviceInfo, SchedulerInfo,
 )
 
 router = APIRouter()
@@ -17,72 +17,83 @@ def _build_capabilities() -> list[Capability]:
     return [
         Capability(
             id="split",
-            name="Stem Separation",
+            label="Stem Separation",
             description="Separate audio into individual stems using Demucs AI models",
-            status=CapabilityStatus.AVAILABLE,
-            input_types=["audio"],
-            output_types=[TrackType.AUDIO],
+            status=CapabilityStatus.IMPLEMENTED,
             param_defs=[
-                ParamDef(key="stem_count", type=ParamType.ENUM, label="Stem Count",
-                         default="6", choices=["4", "6"]),
                 ParamDef(key="model", type=ParamType.ENUM, label="Model",
-                         default="htdemucs_6s", choices=["htdemucs", "htdemucs_6s", "mdx_extra_q"]),
-                ParamDef(key="shifts", type=ParamType.INTEGER, label="Shifts",
-                         default=1, min_val=1, max_val=20),
+                         description="Separation model to use",
+                         default="htdemucs_6s",
+                         options=[
+                             {"value": "htdemucs", "label": "HTDemucs (4 stems)"},
+                             {"value": "htdemucs_6s", "label": "HTDemucs 6-stem"},
+                         ],
+                         group="basic"),
+                ParamDef(key="shifts", type=ParamType.INT, label="Shifts",
+                         description="Number of random shifts for better quality",
+                         default=1, min_val=1, max_val=20, step=1,
+                         group="advanced"),
                 ParamDef(key="overlap", type=ParamType.FLOAT, label="Overlap",
-                         default=0.17, min_val=0.0, max_val=0.99, step=0.01),
+                         description="Overlap between chunks",
+                         default=0.17, min_val=0.0, max_val=0.99, step=0.01,
+                         decimals=2, group="advanced"),
                 ParamDef(key="device_type", type=ParamType.ENUM, label="Device",
-                         default="auto", choices=["auto", "cuda", "dml", "npu", "xpu", "mps", "cpu"]),
+                         description="Compute device for inference",
+                         default="auto",
+                         choices=["auto", "cuda", "dml", "npu", "xpu", "mps", "cpu"],
+                         group="advanced"),
             ],
             models=["htdemucs", "htdemucs_6s", "mdx_extra_q"],
             default_model="htdemucs_6s",
         ),
         Capability(
             id="midi",
-            name="MIDI Transcription",
+            label="MIDI Transcription",
             description="Transcribe audio to MIDI using basic-pitch",
-            status=CapabilityStatus.AVAILABLE,
-            input_types=["audio"],
-            output_types=[TrackType.MIDI],
+            status=CapabilityStatus.IMPLEMENTED,
             param_defs=[
                 ParamDef(key="onset_threshold", type=ParamType.FLOAT, label="Onset Threshold",
-                         default=0.6, min_val=0.0, max_val=1.0, step=0.05),
+                         default=0.6, min_val=0.0, max_val=1.0, step=0.05,
+                         decimals=2, group="basic"),
                 ParamDef(key="frame_threshold", type=ParamType.FLOAT, label="Frame Threshold",
-                         default=0.3, min_val=0.0, max_val=1.0, step=0.05),
+                         default=0.3, min_val=0.0, max_val=1.0, step=0.05,
+                         decimals=2, group="basic"),
             ],
             models=["basic-pitch"],
             default_model="basic-pitch",
         ),
         Capability(
             id="detect",
-            name="Note Detection",
+            label="Note Detection",
             description="Detect note events from audio using AutoSong pipeline",
-            status=CapabilityStatus.AVAILABLE,
-            input_types=["audio"],
-            output_types=[TrackType.MIDI],
+            status=CapabilityStatus.IMPLEMENTED,
             param_defs=[
-                ParamDef(key="instrument_id", type=ParamType.INTEGER, label="Instrument ID",
-                         default=0, min_val=0, max_val=36),
+                ParamDef(key="instrument_id", type=ParamType.INT, label="Instrument ID",
+                         description="Instrument type for note detection",
+                         default=0, min_val=0, max_val=36, group="basic"),
                 ParamDef(key="scale_type", type=ParamType.ENUM, label="Scale",
-                         default="0", choices=["0", "1", "2", "3", "4", "5"]),
-                ParamDef(key="scale_root", type=ParamType.INTEGER, label="Scale Root",
-                         default=0, min_val=0, max_val=11),
+                         description="Musical scale type",
+                         default="0", choices=["0", "1", "2", "3", "4", "5"],
+                         group="basic"),
+                ParamDef(key="scale_root", type=ParamType.INT, label="Scale Root",
+                         description="Root note of the scale (0=C, 1=C#, ...)",
+                         default=0, min_val=0, max_val=11, group="basic"),
                 ParamDef(key="bpm", type=ParamType.FLOAT, label="BPM (0=auto)",
-                         default=0, min_val=0, max_val=300),
+                         description="Beats per minute, 0 for auto-detect",
+                         default=0.0, min_val=0.0, max_val=300.0,
+                         group="basic"),
             ],
             models=["autosong"],
             default_model="autosong",
         ),
         Capability(
             id="generate",
-            name="AI Composition",
+            label="AI Composition",
             description="AI-assisted music composition and MIDI generation",
             status=CapabilityStatus.NOT_IMPLEMENTED,
-            input_types=["params"],
-            output_types=[TrackType.MIDI],
             param_defs=[],
             models=[],
-            default_model="",
+            default_model=None,
         ),
     ]
 
@@ -90,8 +101,11 @@ def _build_capabilities() -> list[Capability]:
 def _build_devices() -> list[DeviceInfo]:
     devices = []
     for backend in get_all_backends():
-        if backend.is_available():
-            devices.append(backend.get_device_info())
+        info = backend.get_device_info()
+        if info.available:
+            devices.append(info)
+        else:
+            devices.append(info)
     return devices
 
 
@@ -99,15 +113,14 @@ def _build_devices() -> list[DeviceInfo]:
 async def get_capabilities():
     return CapabilitiesResponse(
         protocol_version=PROTOCOL_VERSION,
+        server_version=__version__,
         capabilities=_build_capabilities(),
         devices=_build_devices(),
         scheduler=SchedulerInfo(
-            type="fifo",
-            max_concurrent=settings.max_concurrent_tasks,
+            max_concurrent_tasks=settings.max_concurrent_tasks,
+            max_queue_size=settings.max_concurrent_tasks * 5,
         ),
-        output_formats=[
-            OutputFormat(format="wav", packaging="separate"),
-            OutputFormat(format="flac", packaging="separate"),
-            OutputFormat(format="wav", packaging="zip"),
-        ],
+        output_formats=["wav", "flac", "mp3"],
+        output_packages=["separate", "zip"],
+        max_upload_bytes=settings.max_upload_bytes,
     )

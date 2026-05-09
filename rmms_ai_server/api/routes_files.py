@@ -12,19 +12,21 @@ from rmms_ai_server.models.errors import InputError, ErrorCode
 router = APIRouter()
 
 
-@router.get("/files/{task_id}/{step_type}/{filename}")
-async def download_file(task_id: str, step_type: str, filename: str):
+@router.get("/files/{task_id}/{filename}")
+async def download_file(task_id: str, filename: str, step_type: str = None):
     task_dir = settings.resolved_output_dir / task_id
     if not task_dir.is_dir():
-        raise InputError(ErrorCode.INPUT_MISSING, f"Task '{task_id}' not found")
+        raise InputError(ErrorCode.TASK_NOT_FOUND, f"Task '{task_id}' not found")
+
+    file_path = None
 
     for child in sorted(task_dir.iterdir()):
-        if child.is_dir() and child.name.endswith(f"_{step_type}"):
+        if child.is_dir() and child.name.startswith("step_"):
             candidate = child / filename
             if candidate.is_file():
                 file_path = candidate
                 break
-    else:
+    if file_path is None:
         candidate = task_dir / filename
         if candidate.is_file():
             file_path = candidate

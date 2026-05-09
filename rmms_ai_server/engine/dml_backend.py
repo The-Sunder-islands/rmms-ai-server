@@ -78,12 +78,11 @@ class DMLBackend(DeviceBackend):
                     dev_name = torch.dml.device_name(i)
                 else:
                     dev_name = f"DirectML Device {i}"
-                units.append(DeviceUnit(id=str(i), name=dev_name, type="dml"))
+                units.append(DeviceUnit(device_index=i, name=dev_name))
             except Exception:
-                units.append(DeviceUnit(id=str(i), name=f"DML:{i}", type="dml"))
+                units.append(DeviceUnit(device_index=i, name=f"DML:{i}"))
         return DeviceInfo(
-            type="dml", name="DirectML",
-            available=count > 0, units=units,
+            device_type="dml", available=count > 0, count=count, units=units,
         )
 
     def acquire_device(self, preferred: Optional[int] = None) -> Optional[int]:

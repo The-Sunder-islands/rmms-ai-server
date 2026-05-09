@@ -12,7 +12,7 @@ async def verify_api_key(request: Request) -> None:
 
     api_key = request.headers.get("X-API-Key", "")
     if not api_key:
-        raise AuthError(ErrorCode.AUTH_MISSING_KEY, "API key required. Set X-API-Key header.")
+        raise AuthError(ErrorCode.AUTH_REQUIRED, "API key required. Set X-API-Key header.")
 
     if api_key != settings.api_key:
-        raise AuthError(ErrorCode.AUTH_INVALID_KEY, "Invalid API key.")
+        raise AuthError(ErrorCode.AUTH_INVALID, "Invalid API key.")

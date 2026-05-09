@@ -96,6 +96,8 @@ def create_app() -> FastAPI:
             except RMMSAIError as e:
                 return JSONResponse(status_code=e.http_status, content=e.to_dict())
         response = await call_next(request)
+        if request.url.path.startswith("/api/v1"):
+            response.headers["X-Protocol-Version"] = PROTOCOL_VERSION
         return response
 
     return app

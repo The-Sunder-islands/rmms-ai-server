@@ -5,7 +5,9 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, File, Form, UploadFile, Request
+import time
+
+from fastapi import APIRouter, File, Form, UploadFile, Query, Request
 from fastapi.responses import JSONResponse
 
 from rmms_ai_server.config import settings
@@ -51,14 +53,14 @@ async def submit_task(
 
         if not _allowed_file(file.filename):
             raise InputError(
-                ErrorCode.INPUT_UNSUPPORTED_TYPE,
+                ErrorCode.INPUT_FORMAT_UNSUPPORTED,
                 f"Unsupported file type. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
             )
 
         content = await file.read()
         if len(content) > settings.max_upload_bytes:
             raise InputError(
-                ErrorCode.INPUT_FILE_TOO_LARGE,
+                ErrorCode.INPUT_TOO_LARGE,
                 f"File too large ({len(content) // (1024*1024)}MB). Maximum: {settings.max_upload_mb}MB"
             )
 
@@ -93,6 +95,8 @@ async def submit_task(
                 task_id=cached["task_id"],
                 status="done",
                 message="Cached result",
+                cached=True,
+                created_at=cached.get("created_at", ""),
             )
 
     task = await task_manager.create_task(
@@ -106,30 +110,42 @@ async def submit_task(
         params_key = {"preset": preset, "pipeline": pipeline_steps, "device": device_preference}
         cache_manager.put(file_hash, params_key, {"task_id": task.task_id})
 
-    return TaskSubmitResponse(
-        task_id=task.task_id,
-        status="queued",
-        message="Task submitted successfully",
+    return JSONResponse(
+        status_code=201,
+        content=TaskSubmitResponse(
+            task_id=task.task_id,
+            status="queued",
+            message="Task submitted successfully",
+            pipeline=resolved,
+            created_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(task.created_at)),
+        ).model_dump(by_alias=True),
     )
 
 
 @router.get("/tasks")
-async def list_tasks():
-    tasks = task_manager.list_tasks()
+async def list_tasks(
+    status: Optional[str] = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    all_tasks = task_manager.list_tasks()
+    if status:
+        all_tasks = [t for t in all_tasks if t.status.value == status]
+    total = len(all_tasks)
+    paged = all_tasks[offset:offset + limit]
     return {
         "tasks": [
-            TaskStatusResponse(
-                task_id=t.task_id,
-                status=t.status.value,
-                current_step=t.current_step,
-                percent=t.percent,
-                error=t.error,
-                result_urls=[u.model_dump() for u in t.result_urls],
-                step_errors=[e.model_dump() for e in t.step_errors],
-            ).model_dump()
-            for t in tasks
+            {
+                "task_id": t.task_id,
+                "status": t.status.value,
+                "current_step": t.current_step,
+                "percent": t.percent,
+            }
+            for t in paged
         ],
-        "total": len(tasks),
+        "total": total,
+        "limit": limit,
+        "offset": offset,
     }
 
 
@@ -139,15 +155,29 @@ async def get_task_status(task_id: str):
     if task is None:
         raise InputError(ErrorCode.TASK_NOT_FOUND, f"Task '{task_id}' not found")
 
-    return TaskStatusResponse(
-        task_id=task.task_id,
-        status=task.status.value,
-        current_step=task.current_step,
-        percent=task.percent,
-        error=task.error,
-        result_urls=[u.model_dump() for u in task.result_urls],
-        step_errors=[e.model_dump() for e in task.step_errors],
-    ).model_dump()
+    def _ts(ts: float | None) -> str | None:
+        if ts is None:
+            return None
+        return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
+
+    pipeline_steps = task.pipeline
+    step_type = pipeline_steps[task.current_step].capability if pipeline_steps and task.current_step < len(pipeline_steps) else ""
+
+    return {
+        "task_id": task.task_id,
+        "status": task.status.value,
+        "current_step": task.current_step,
+        "step_type": step_type,
+        "percent": task.percent,
+        "error": task.error,
+        "completed_steps": [si.step_index for si in task.result_urls],
+        "failed_steps": [se.step_index for se in task.step_errors],
+        "completed_urls": [u.model_dump() for u in task.result_urls],
+        "errors": [e.model_dump() for e in task.step_errors],
+        "created_at": _ts(task.created_at),
+        "started_at": _ts(task.started_at),
+        "finished_at": _ts(task.finished_at),
+    }
 
 
 @router.delete("/tasks/{task_id}")
@@ -155,4 +185,4 @@ async def delete_task(task_id: str):
     deleted = await task_manager.delete_task(task_id)
     if not deleted:
         raise InputError(ErrorCode.TASK_NOT_FOUND, f"Task '{task_id}' not found")
-    return {"status": "deleted", "task_id": task_id}
+    return {"status": "cancelled", "task_id": task_id, "message": "Task cancelled. Input and output files deleted."}

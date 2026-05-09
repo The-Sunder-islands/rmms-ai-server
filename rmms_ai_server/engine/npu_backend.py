@@ -44,12 +44,11 @@ class NPUBackend(DeviceBackend):
             try:
                 import torch_npu
                 name = torch_npu.npu.get_device_name(i)
-                units.append(DeviceUnit(id=str(i), name=name, type="npu"))
+                units.append(DeviceUnit(device_index=i, name=name))
             except Exception:
-                units.append(DeviceUnit(id=str(i), name=f"NPU:{i}", type="npu"))
+                units.append(DeviceUnit(device_index=i, name=f"NPU:{i}"))
         return DeviceInfo(
-            type="npu", name="Huawei NPU (Ascend)",
-            available=count > 0, units=units,
+            device_type="npu", available=count > 0, count=count, units=units,
         )
 
     def acquire_device(self, preferred: Optional[int] = None) -> Optional[int]:

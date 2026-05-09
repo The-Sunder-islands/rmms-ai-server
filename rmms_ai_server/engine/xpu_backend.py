@@ -46,12 +46,11 @@ class XPUBackend(DeviceBackend):
             try:
                 import torch
                 name = torch.xpu.get_device_name(i)
-                units.append(DeviceUnit(id=str(i), name=name, type="xpu"))
+                units.append(DeviceUnit(device_index=i, name=name))
             except Exception:
-                units.append(DeviceUnit(id=str(i), name=f"XPU:{i}", type="xpu"))
+                units.append(DeviceUnit(device_index=i, name=f"XPU:{i}"))
         return DeviceInfo(
-            type="xpu", name="Intel XPU",
-            available=count > 0, units=units,
+            device_type="xpu", available=count > 0, count=count, units=units,
         )
 
     def acquire_device(self, preferred: Optional[int] = None) -> Optional[int]:

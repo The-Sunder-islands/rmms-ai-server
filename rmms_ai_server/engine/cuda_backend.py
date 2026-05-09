@@ -48,14 +48,13 @@ class CUDABackend(DeviceBackend):
                 total_mb = props.total_memory // (1024 * 1024)
                 used_mb = torch.cuda.memory_allocated(i) // (1024 * 1024)
                 units.append(DeviceUnit(
-                    id=str(i), name=name, type="cuda",
+                    device_index=i, name=name,
                     memory_total_mb=total_mb, memory_used_mb=used_mb,
                 ))
             except Exception:
-                units.append(DeviceUnit(id=str(i), name=f"CUDA:{i}", type="cuda"))
+                units.append(DeviceUnit(device_index=i, name=f"CUDA:{i}"))
         return DeviceInfo(
-            type="cuda", name="CUDA GPU",
-            available=count > 0, units=units,
+            device_type="cuda", available=count > 0, count=count, units=units,
         )
 
     def acquire_device(self, preferred: Optional[int] = None) -> Optional[int]:

@@ -31,9 +31,8 @@ class MPSBackend(DeviceBackend):
 
     def get_device_info(self) -> DeviceInfo:
         return DeviceInfo(
-            type="mps", name="Apple MPS",
-            available=self.is_available(),
-            units=[DeviceUnit(id="0", name="Apple GPU", type="mps")] if self.is_available() else [],
+            device_type="mps", available=self.is_available(), count=1 if self.is_available() else 0,
+            units=[DeviceUnit(device_index=0, name="Apple GPU")] if self.is_available() else [],
         )
 
     def acquire_device(self, preferred: Optional[int] = None) -> Optional[int]:

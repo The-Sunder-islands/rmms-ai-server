@@ -21,7 +21,7 @@ def run_midi(
         from basic_pitch import ICASSP_2022_MODEL_PATH
     except ImportError:
         raise ModelError(
-            ErrorCode.CAPABILITY_NOT_AVAILABLE,
+            ErrorCode.CAPABILITY_NOT_IMPLEMENTED,
             "basic-pitch is not installed. Install with: pip install rmms-ai-server[midi]"
         )
 

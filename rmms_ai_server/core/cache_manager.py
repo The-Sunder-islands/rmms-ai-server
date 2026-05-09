@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import time
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,7 @@ class CacheManager:
 
     def put(self, file_hash: str, params: dict, result: dict) -> None:
         key = self._compute_key(file_hash, params)
+        result.setdefault("created_at", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
         self._cache[key] = result
         logger.debug(f"Cache put: {key}")
 

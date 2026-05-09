@@ -157,11 +157,11 @@ def run_split(
 
     backend = get_backend(device_type)
     if backend is None or not backend.is_available():
-        raise DeviceError(ErrorCode.DEVICE_NOT_AVAILABLE, f"Device type '{device_type}' not available")
+        raise DeviceError(ErrorCode.DEVICE_UNAVAILABLE, f"Device type '{device_type}' not available")
 
     device_id = backend.acquire_device()
     if device_id is None:
-        raise DeviceError(ErrorCode.DEVICE_BUSY, f"No available {device_type} device")
+        raise DeviceError(ErrorCode.DEVICE_UNAVAILABLE, f"No available {device_type} device")
 
     try:
         info = sf.info(input_path)
