@@ -11,9 +11,11 @@ from typing import Optional
 from rmms_ai_server.config import settings
 from rmms_ai_server.models.protocol import (
     TaskInfo, TaskStatus, PipelineStep, StepResultURL, StepError,
+    FinalStatus,
 )
 from rmms_ai_server.models.errors import ServerError, ErrorCode, QuotaError
 from rmms_ai_server.core.pipeline_runner import pipeline_runner
+from rmms_ai_server.core.sse_manager import sse_manager
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +136,8 @@ class TaskManager:
                 self._active_count = max(0, self._active_count - 1)
 
             del self._tasks[task_id]
+
+        sse_manager.send_final_result(task_id, FinalStatus.CANCELLED)
 
         upload_dir = str(settings.resolved_upload_dir / task_id)
         output_dir = str(settings.resolved_output_dir / task_id)

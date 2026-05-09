@@ -85,11 +85,6 @@ class SchedulerInfo(BaseModel):
     max_queue_size: int = 20
 
 
-class OutputFormat(BaseModel):
-    format: str
-    packaging: str = "separate"
-
-
 class Capability(BaseModel):
     id: str
     label: str = ""
@@ -145,44 +140,6 @@ class StepError(BaseModel):
     step_index: int
     step_type: str = ""
     error: dict[str, Any] = Field(default_factory=dict)
-
-
-class ProgressRunning(BaseModel):
-    status: ProgressStatus = ProgressStatus.RUNNING
-    percent: float = 0.0
-    message: str = ""
-
-
-class ProgressCompleted(BaseModel):
-    status: ProgressStatus = ProgressStatus.COMPLETED
-    urls: list[StepResultURL] = []
-
-
-class ProgressFailed(BaseModel):
-    status: ProgressStatus = ProgressStatus.FAILED
-    error: StepError
-
-
-ProgressEvent = ProgressRunning | ProgressCompleted | ProgressFailed
-
-
-class Track(BaseModel):
-    track_type: str = "audio"
-    stem: str = ""
-    label: str = ""
-    url: str = ""
-    format: str = ""
-    sample_rate: Optional[int] = None
-    duration: Optional[float] = None
-    size_bytes: Optional[int] = None
-
-
-class PartialResultEvent(BaseModel):
-    type: str = "partial_result"
-    task_id: str = ""
-    step_index: int = 0
-    step_type: str = ""
-    track: Optional[Track] = None
 
 
 class ProgressSSEEvent(BaseModel):
