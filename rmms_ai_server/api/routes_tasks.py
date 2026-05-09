@@ -75,7 +75,7 @@ async def submit_task(
         file_hash = cache_manager.compute_file_hash(input_path)
 
     elif audio_url:
-        raise InputError(ErrorCode.INPUT_INVALID_FORMAT, "URL input not yet implemented")
+        raise InputError(ErrorCode.INPUT_FORMAT_UNSUPPORTED, "URL input not yet implemented")
 
     import json
     pipeline_steps = None
