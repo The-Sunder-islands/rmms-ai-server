@@ -54,8 +54,9 @@ class DeviceBackend(ABC):
 
 
 def register_backend(backend_cls: type[DeviceBackend]) -> type[DeviceBackend]:
+    dtype = backend_cls.device_type.fget(property()) if isinstance(backend_cls.__dict__.get("device_type"), property) else getattr(backend_cls, "device_type", backend_cls.__name__)
     with _backends_lock:
-        _backends[backend_cls.device_type.fget(None)] = backend_cls
+        _backends[dtype] = backend_cls
     return backend_cls
 
 
@@ -64,11 +65,15 @@ def get_backend(device_type: str) -> Optional[DeviceBackend]:
         if device_type in _instances:
             return _instances[device_type]
         cls = _backends.get(device_type)
-        if cls is None:
-            return None
-        instance = cls()
-        _instances[device_type] = instance
-        return instance
+    if cls is None:
+        return None
+    instance = cls()
+    with _backends_lock:
+        if device_type not in _instances:
+            _instances[device_type] = instance
+        else:
+            instance = _instances[device_type]
+    return instance
 
 
 def get_all_backends() -> list[DeviceBackend]:

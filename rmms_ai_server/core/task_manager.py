@@ -54,7 +54,8 @@ class TaskManager:
     ) -> TaskInfo:
         async with self._lock:
             total_tasks = len(self._tasks)
-            if self._active_count >= settings.max_concurrent_tasks:
+            current_active = self._active_count
+            if current_active >= settings.max_concurrent_tasks:
                 queued = sum(1 for t in self._tasks.values() if t.status == TaskStatus.QUEUED)
                 if queued >= settings.max_queue_size:
                     raise QuotaError(
@@ -65,7 +66,7 @@ class TaskManager:
                             "queue_position": queued,
                             "max_queue_size": settings.max_queue_size,
                             "max_concurrent_tasks": settings.max_concurrent_tasks,
-                            "current_tasks": self._active_count,
+                            "current_tasks": current_active,
                         },
                     )
                 else:
@@ -78,7 +79,7 @@ class TaskManager:
                             "queue_position": queued + 1,
                             "max_queue_size": settings.max_queue_size,
                             "max_concurrent_tasks": settings.max_concurrent_tasks,
-                            "current_tasks": self._active_count,
+                            "current_tasks": current_active,
                         },
                     )
 
@@ -102,6 +103,9 @@ class TaskManager:
         )
 
         return task
+
+    def _decrement_active_count(self):
+        self._active_count = max(0, self._active_count - 1)
 
     async def _run_task(
         self,
@@ -131,9 +135,10 @@ class TaskManager:
                 task.error = str(e)
                 task.finished_at = time.time()
         finally:
-            task = self._tasks.get(task_id)
-            if task is not None:
-                self._active_count = max(0, self._active_count - 1)
+            async with self._lock:
+                task = self._tasks.get(task_id)
+                if task is not None:
+                    self._decrement_active_count()
             self._cancel_events.pop(task_id, None)
 
     def get_task(self, task_id: str) -> Optional[TaskInfo]:
@@ -158,7 +163,7 @@ class TaskManager:
                 cancel_ev.set()
 
             if was_active:
-                self._active_count = max(0, self._active_count - 1)
+                self._decrement_active_count()
 
             del self._tasks[task_id]
 

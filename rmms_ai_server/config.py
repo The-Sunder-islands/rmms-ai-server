@@ -36,19 +36,19 @@ class Settings(BaseSettings):
     def resolved_upload_dir(self) -> Path:
         if self.upload_dir:
             return Path(self.upload_dir)
-        return Path(__file__).parent.parent / "uploads"
+        return Path.cwd() / "uploads"
 
     @property
     def resolved_output_dir(self) -> Path:
         if self.output_dir:
             return Path(self.output_dir)
-        return Path(__file__).parent.parent / "outputs"
+        return Path.cwd() / "outputs"
 
     @property
     def resolved_model_cache_dir(self) -> Path:
         if self.model_cache_dir:
             return Path(self.model_cache_dir)
-        return Path(__file__).parent.parent / "models"
+        return Path.cwd() / "models"
 
     @property
     def auth_enabled(self) -> bool:

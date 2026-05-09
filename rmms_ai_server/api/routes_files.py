@@ -20,16 +20,19 @@ async def download_file(task_id: str, filename: str, step_type: str = None):
 
     file_path = None
 
-    for child in sorted(task_dir.iterdir()):
+    task_dir_resolved = task_dir.resolve()
+    for child in sorted(task_dir_resolved.iterdir()):
         if child.is_dir() and child.name.startswith("step_"):
             candidate = child / filename
-            if candidate.is_file():
-                file_path = candidate
+            candidate_resolved = candidate.resolve()
+            if candidate_resolved.is_file() and str(candidate_resolved).startswith(str(task_dir_resolved)):
+                file_path = candidate_resolved
                 break
     if file_path is None:
-        candidate = task_dir / filename
-        if candidate.is_file():
-            file_path = candidate
+        candidate = task_dir_resolved / filename
+        candidate_resolved = candidate.resolve()
+        if candidate_resolved.is_file() and str(candidate_resolved).startswith(str(task_dir_resolved)):
+            file_path = candidate_resolved
         else:
             raise InputError(ErrorCode.INPUT_MISSING, f"File '{filename}' not found for task '{task_id}'")
 

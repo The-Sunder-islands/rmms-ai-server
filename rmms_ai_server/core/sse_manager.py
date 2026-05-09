@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional
+import threading
 
 from rmms_ai_server.models.protocol import (
     ProgressSSEEvent, PartialResultEvent, FinalResultEvent,
     ProgressStatus, FinalStatus, StepResultURL, StepError,
 )
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -16,25 +15,29 @@ logger = logging.getLogger(__name__)
 class SSEManager:
     def __init__(self):
         self._subscribers: dict[str, list[asyncio.Queue]] = {}
+        self._lock = threading.Lock()
 
     def subscribe(self, task_id: str) -> asyncio.Queue:
-        queue: asyncio.Queue = asyncio.Queue()
-        if task_id not in self._subscribers:
-            self._subscribers[task_id] = []
-        self._subscribers[task_id].append(queue)
+        queue: asyncio.Queue = asyncio.Queue(maxsize=256)
+        with self._lock:
+            if task_id not in self._subscribers:
+                self._subscribers[task_id] = []
+            self._subscribers[task_id].append(queue)
         return queue
 
     def unsubscribe(self, task_id: str, queue: asyncio.Queue) -> None:
-        if task_id in self._subscribers:
-            try:
-                self._subscribers[task_id].remove(queue)
-            except ValueError:
-                pass
-            if not self._subscribers[task_id]:
-                del self._subscribers[task_id]
+        with self._lock:
+            if task_id in self._subscribers:
+                try:
+                    self._subscribers[task_id].remove(queue)
+                except ValueError:
+                    pass
+                if not self._subscribers[task_id]:
+                    del self._subscribers[task_id]
 
     def _publish(self, task_id: str, event: dict) -> None:
-        queues = self._subscribers.get(task_id, [])
+        with self._lock:
+            queues = list(self._subscribers.get(task_id, []))
         dead_queues = []
         for q in queues:
             try:

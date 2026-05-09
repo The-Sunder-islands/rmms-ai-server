@@ -91,6 +91,11 @@ class PipelineRunner:
         step_outputs: dict[int, str] = {}
 
         for i, step in enumerate(pipeline):
+            if task_manager.is_cancelled(task_id):
+                task.status = TaskStatus.CANCELLED
+                sse_manager.send_final_result(task_id, FinalStatus.CANCELLED)
+                return
+
             task.current_step = i
 
             sse_manager.send_progress_running(

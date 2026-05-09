@@ -71,9 +71,11 @@ async def submit_task(request: Request):
 
 
 async def _submit_json(request: Request):
-    body = await request.json()
     try:
+        body = await request.json()
         data = TaskSubmitJSON(**body)
+    except json.JSONDecodeError:
+        raise InputError(ErrorCode.INPUT_FORMAT_UNSUPPORTED, "Invalid JSON body")
     except Exception as e:
         raise InputError(ErrorCode.PIPELINE_INVALID, f"Invalid request body: {e}")
 

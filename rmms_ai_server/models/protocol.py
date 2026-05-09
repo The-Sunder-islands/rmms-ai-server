@@ -142,6 +142,25 @@ class StepError(BaseModel):
     error: dict[str, Any] = Field(default_factory=dict)
 
 
+class Track(BaseModel):
+    track_type: str = "audio"
+    stem: str = ""
+    label: str = ""
+    url: str = ""
+    format: str = ""
+    sample_rate: Optional[int] = None
+    duration: Optional[float] = None
+    size_bytes: Optional[int] = None
+
+
+class PartialResultEvent(BaseModel):
+    type: str = "partial_result"
+    task_id: str = ""
+    step_index: int = 0
+    step_type: str = ""
+    track: Optional[Track] = None
+
+
 class ProgressSSEEvent(BaseModel):
     type: str = "progress"
     task_id: str = ""
@@ -175,8 +194,8 @@ class TaskInfo(BaseModel):
     current_step: int = 0
     percent: float = 0.0
     error: Optional[str] = None
-    result_urls: list[StepResultURL] = []
-    step_errors: list[StepError] = []
+    result_urls: list[StepResultURL] = Field(default_factory=list)
+    step_errors: list[StepError] = Field(default_factory=list)
     output_format: str = "wav"
 
 

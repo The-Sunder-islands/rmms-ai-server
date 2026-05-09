@@ -64,7 +64,8 @@ class InputError(RMMSAIError):
 
 class ModelError(RMMSAIError):
     def __init__(self, code: ErrorCode, message: str, **kwargs):
-        super().__init__(code, message, http_status=500, **kwargs)
+        status = 400 if code in (ErrorCode.INPUT_MISSING, ErrorCode.INPUT_INVALID_PARAMS) else 500
+        super().__init__(code, message, http_status=status, **kwargs)
 
 
 class DeviceError(RMMSAIError):
