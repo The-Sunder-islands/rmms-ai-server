@@ -124,6 +124,7 @@ async def _submit_json(request: Request):
             pipeline=resolved, input_path=input_path,
             device_preference=data.device_preference,
             priority=data.priority,
+            output_format=data.output_format or "wav",
         )
     except QuotaError:
         raise
@@ -207,6 +208,7 @@ async def _submit_multipart(request: Request):
         task = await task_manager.create_task(
             pipeline=resolved, input_path=input_path,
             device_preference=device_preference, priority=priority,
+            output_format=output_format or "wav",
         )
     except QuotaError:
         raise

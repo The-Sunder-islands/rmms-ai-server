@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import shutil
+import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -42,6 +44,32 @@ class PipelineRunner:
             )
         return self._executor
 
+    @staticmethod
+    def convert_audio(input_path: str, output_path: str, target_format: str) -> bool:
+        if target_format == "wav":
+            if input_path != output_path:
+                shutil.copy2(input_path, output_path)
+            return True
+
+        try:
+            import soundfile as sf
+            data, sr = sf.read(input_path)
+            sf.write(output_path, data, sr)
+            return True
+        except Exception:
+            pass
+
+        try:
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", input_path, output_path],
+                capture_output=True, timeout=60,
+            )
+            return os.path.isfile(output_path)
+        except Exception:
+            pass
+
+        return False
+
     async def run_pipeline(
         self,
         task_id: str,
@@ -49,6 +77,7 @@ class PipelineRunner:
         input_path: str,
         output_dir: str,
         device_preference: Optional[str] = None,
+        output_format: Optional[str] = None,
     ) -> None:
         from rmms_ai_server.core.task_manager import task_manager
 
@@ -88,6 +117,9 @@ class PipelineRunner:
 
                 if result and "output_dir" in result:
                     step_outputs[i] = result["output_dir"]
+
+                if output_format and output_format != "wav":
+                    self._convert_step_output(step_output_dir, output_format)
 
                 step_urls = self._collect_urls(task_id, step_output_dir, i, step.capability)
                 all_urls.extend(step_urls)
@@ -182,6 +214,23 @@ class PipelineRunner:
         )
 
         return result
+
+    def _convert_step_output(self, output_dir: str, target_format: str) -> None:
+        if not os.path.isdir(output_dir):
+            return
+        ext = f".{target_format}"
+        for fname in sorted(os.listdir(output_dir)):
+            if not fname.endswith(".wav"):
+                continue
+            fpath = os.path.join(output_dir, fname)
+            base = os.path.splitext(fname)[0]
+            out_path = os.path.join(output_dir, f"{base}{ext}")
+            if self.convert_audio(fpath, out_path, target_format):
+                try:
+                    os.remove(fpath)
+                except OSError:
+                    pass
+                logger.debug(f"Converted: {fname} -> {os.path.basename(out_path)}")
 
     def _collect_urls(self, task_id: str, output_dir: str, step_index: int,
                        step_type: str) -> list[StepResultURL]:

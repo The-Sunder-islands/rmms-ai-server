@@ -177,6 +177,7 @@ class TaskInfo(BaseModel):
     error: Optional[str] = None
     result_urls: list[StepResultURL] = []
     step_errors: list[StepError] = []
+    output_format: str = "wav"
 
 
 class TaskListResponse(BaseModel):

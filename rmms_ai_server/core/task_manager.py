@@ -50,6 +50,7 @@ class TaskManager:
         input_path: str,
         device_preference: Optional[str] = None,
         priority: Optional[int] = None,
+        output_format: str = "wav",
     ) -> TaskInfo:
         async with self._lock:
             total_tasks = len(self._tasks)
@@ -87,6 +88,7 @@ class TaskManager:
                 status=TaskStatus.QUEUED,
                 pipeline=pipeline,
                 created_at=time.time(),
+                output_format=output_format,
             )
             self._tasks[task_id] = task
             self._cancel_events[task_id] = asyncio.Event()
@@ -119,6 +121,7 @@ class TaskManager:
                 input_path=input_path,
                 output_dir=output_dir,
                 device_preference=device_preference,
+                output_format=task.output_format,
             )
         except Exception as e:
             logger.exception(f"Pipeline runner error for task {task_id}")
