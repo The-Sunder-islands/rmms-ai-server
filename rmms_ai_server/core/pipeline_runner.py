@@ -161,6 +161,8 @@ class PipelineRunner:
 
         params = dict(step.params)
         params["task_id"] = task_id
+        if step.model and "model" not in params:
+            params["model"] = step.model
         if device_preference and "device_type" not in params:
             params["device_type"] = device_preference
 

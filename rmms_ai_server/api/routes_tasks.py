@@ -108,7 +108,10 @@ async def _submit_json(request: Request):
     file_hash = cache_manager.compute_file_hash(input_path) if input_path else None
 
     if not data.force_refresh and file_hash:
-        params_key = {"pipeline": [s.model_dump(by_alias=True) for s in resolved], "device": data.device_preference}
+        params_key = {"pipeline": [s.model_dump(by_alias=True) for s in resolved],
+                      "device": data.device_preference,
+                      "output_format": data.output_format,
+                      "output_package": data.output_package}
         cached = cache_manager.get(file_hash, params_key)
         if cached:
             return TaskSubmitResponse(
@@ -128,7 +131,10 @@ async def _submit_json(request: Request):
         raise InputError(ErrorCode.SERVER_ERROR, str(e))
 
     if file_hash:
-        params_key = {"pipeline": [s.model_dump(by_alias=True) for s in resolved], "device": data.device_preference}
+        params_key = {"pipeline": [s.model_dump(by_alias=True) for s in resolved],
+                      "device": data.device_preference,
+                      "output_format": data.output_format,
+                      "output_package": data.output_package}
         cache_manager.put(file_hash, params_key, {"task_id": task.task_id})
 
     return JSONResponse(
@@ -149,6 +155,8 @@ async def _submit_multipart(request: Request):
     device_preference = form.get("device_preference")
     priority = form.get("priority")
     force_refresh = form.get("force_refresh", "false") == "true"
+    output_format = form.get("output_format")
+    output_package = form.get("output_package")
 
     if isinstance(priority, str):
         try:
@@ -186,7 +194,8 @@ async def _submit_multipart(request: Request):
     resolved = resolve_pipeline(pipeline_steps, preset)
 
     if not force_refresh and file_hash:
-        params_key = {"preset": preset, "pipeline": pipeline_steps, "device": device_preference}
+        params_key = {"preset": preset, "pipeline": pipeline_steps, "device": device_preference,
+                      "output_format": output_format, "output_package": output_package}
         cached = cache_manager.get(file_hash, params_key)
         if cached:
             return TaskSubmitResponse(
@@ -205,7 +214,8 @@ async def _submit_multipart(request: Request):
         raise InputError(ErrorCode.SERVER_ERROR, str(e))
 
     if file_hash:
-        params_key = {"preset": preset, "pipeline": pipeline_steps, "device": device_preference}
+        params_key = {"preset": preset, "pipeline": pipeline_steps, "device": device_preference,
+                      "output_format": output_format, "output_package": output_package}
         cache_manager.put(file_hash, params_key, {"task_id": task.task_id})
 
     return JSONResponse(
