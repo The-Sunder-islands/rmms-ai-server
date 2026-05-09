@@ -9,8 +9,9 @@ from fastapi.responses import JSONResponse
 from rmms_ai_server import __version__, PROTOCOL_VERSION
 from rmms_ai_server.config import settings
 from starlette.middleware.cors import CORSMiddleware
-from rmms_ai_server.models.errors import RMMSAIError
+from rmms_ai_server.models.errors import RMMSAIError, ErrorCode
 from rmms_ai_server.core.auth import verify_api_key
+from rmms_ai_server.core.rate_limiter import RateLimiter
 from rmms_ai_server.api.routes_health import router as health_router
 from rmms_ai_server.api.routes_capabilities import router as capabilities_router
 from rmms_ai_server.api.routes_tasks import router as tasks_router
@@ -88,6 +89,11 @@ def create_app() -> FastAPI:
             content={"error": exc.to_dict()},
         )
 
+    _rate_limiter = RateLimiter(
+        max_tokens=settings.rate_limit_max_requests,
+        refill_rate=settings.rate_limit_per_second,
+    )
+
     @app.middleware("http")
     async def auth_middleware(request: Request, call_next):
         if request.url.path.startswith("/api/v1"):
@@ -101,6 +107,28 @@ def create_app() -> FastAPI:
         response = await call_next(request)
         if request.url.path.startswith("/api/v1"):
             response.headers["X-Protocol-Version"] = PROTOCOL_VERSION
+        return response
+
+    @app.middleware("http")
+    async def rate_limit_middleware(request: Request, call_next):
+        if settings.rate_limit_enabled and request.url.path.startswith("/api/v1"):
+            client_ip = request.client.host if request.client else "unknown"
+            allowed, retry_after = _rate_limiter.is_allowed(client_ip)
+            if not allowed:
+                return JSONResponse(
+                    status_code=429,
+                    content={
+                        "error": {
+                            "code": ErrorCode.QUOTA_RATE_LIMIT.value,
+                            "message": "Request rate too high. Slow down.",
+                            "details": {
+                                "retry_after": int(retry_after or 1),
+                            },
+                        }
+                    },
+                    headers={"Retry-After": str(int(retry_after or 1))},
+                )
+        response = await call_next(request)
         return response
 
     return app

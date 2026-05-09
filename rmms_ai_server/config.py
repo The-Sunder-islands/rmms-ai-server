@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     output_dir: str = ""
     mdns_enabled: bool = True
     mdns_name: str = "RMMS AI Server"
+    rate_limit_enabled: bool = False
+    rate_limit_max_requests: int = 60
+    rate_limit_per_second: float = 10.0
     log_level: str = "INFO"
 
     @property
