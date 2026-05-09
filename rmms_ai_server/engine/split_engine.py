@@ -12,6 +12,8 @@ import torch
 
 from rmms_ai_server.config import settings
 from rmms_ai_server.models.errors import DeviceError, ModelError, ErrorCode
+from rmms_ai_server.models.protocol import Track
+from rmms_ai_server.core.sse_manager import sse_manager
 from .device_backend import get_backend, resolve_device_type, SectionConfig
 
 logger = logging.getLogger(__name__)
@@ -140,6 +142,7 @@ def run_split(
     repo: Optional[str] = None,
     overlap: float = OVERLAP,
     progress_callback: Optional[Callable[[float, str], None]] = None,
+    task_id: str = "",
 ) -> dict:
     input_path = os.path.abspath(input_path)
     if not os.path.isfile(input_path):
@@ -182,12 +185,12 @@ def run_split(
         if n_sections <= 1:
             result = _split_single(
                 demucs_model, input_path, output_dir, model, torch_device,
-                shifts, overlap, progress_callback
+                shifts, overlap, progress_callback, task_id
             )
         else:
             result = _split_sectioned(
                 demucs_model, input_path, output_dir, model, torch_device,
-                shifts, overlap, n_sections, stem_names, progress_callback
+                shifts, overlap, n_sections, stem_names, progress_callback, task_id
             )
 
         _create_backing_track(output_dir, stem_names)
@@ -205,6 +208,7 @@ def _split_single(
     model, input_path: str, output_dir: str, model_name: str, device: torch.device,
     shifts: int, overlap: float,
     progress_callback: Optional[Callable[[float, str], None]],
+    task_id: str = "",
 ) -> dict:
     if progress_callback:
         progress_callback(5.0, "Reading audio...")
@@ -229,6 +233,23 @@ def _split_single(
         out_path = os.path.join(output_dir, f"{stem_name}.wav")
         _write_stem_wav(out_path, separated[i], sr)
 
+        if task_id:
+            try:
+                file_size = os.path.getsize(out_path)
+                dur = float(separated.shape[-1]) / sr
+                sse_manager.send_partial_result(task_id, 0, "split", {
+                    "track_type": "audio",
+                    "stem": stem_name,
+                    "label": stem_name.capitalize(),
+                    "url": f"/api/v1/files/{task_id}/{stem_name}.wav",
+                    "format": "wav",
+                    "sample_rate": sr,
+                    "duration": round(dur, 2),
+                    "size_bytes": file_size,
+                })
+            except Exception:
+                pass
+
         if progress_callback:
             pct = 10.0 + 85.0 * ((i + 1) / total_stems)
             progress_callback(pct, f"Writing stem: {stem_name}")
@@ -240,6 +261,7 @@ def _split_sectioned(
     model, input_path: str, output_dir: str, model_name: str, device: torch.device,
     shifts: int, overlap: float, n_sections: int, stem_names: list[str],
     progress_callback: Optional[Callable[[float, str], None]],
+    task_id: str = "",
 ) -> dict:
     data, sr = sf.read(input_path, dtype='int16')
     total_samples = len(data)
@@ -287,6 +309,22 @@ def _split_sectioned(
                 out_path = os.path.join(output_dir, f"{stem}.wav")
                 sf.write(out_path, merged, sr)
                 logger.info(f"Merged stem: {stem}.wav")
+                if task_id:
+                    try:
+                        file_size = os.path.getsize(out_path)
+                        dur = len(merged) / sr
+                        sse_manager.send_partial_result(task_id, 0, "split", {
+                            "track_type": "audio",
+                            "stem": stem,
+                            "label": stem.capitalize(),
+                            "url": f"/api/v1/files/{task_id}/{stem}.wav",
+                            "format": "wav",
+                            "sample_rate": sr,
+                            "duration": round(dur, 2),
+                            "size_bytes": file_size,
+                        })
+                    except Exception:
+                        pass
 
     finally:
         shutil.rmtree(sections_dir, ignore_errors=True)
